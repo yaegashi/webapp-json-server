@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { DataType } from './types';
-import { Breadcrumbs, CircularProgress, TextField, Typography, Checkbox, FormControlLabel } from '@mui/material';
+import { Breadcrumbs, CircularProgress, TextField, Typography, Checkbox, FormControlLabel, Alert } from '@mui/material';
 import DataListItem from './DataListItem';
 import DataRawItem from './DataRawItem';
 
@@ -10,21 +10,33 @@ const DataList: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [debugMode, setDebugMode] = useState(false); // デバッグモード用の状態
   const [rawResponse, setRawResponse] = useState(''); // 生のレスポンスデータ用の状態
+  const [error, setError] = useState<string | null>(null); // エラーメッセージ用の状態
 
   const fetchItems = async (query = '') => {
     try {
       setLoading(true); // 検索開始時にローディングを開始
+      setError(null); // エラーをクリア
       const response = await fetch(`/api/data?q=${query}`);
       if (!response.ok) {
         throw new Error('Network response was not ok');
       }
-      const data: DataType[] = await response.json();
-      setItems(data);
-      setRawResponse(JSON.stringify(data, null, 2)); // 生のレスポンスデータを保存
-      setLoading(false); // データの取得が完了したらローディングを終了
-    } catch (error) {
+      const data: unknown = await response.json();
+      // 生のレスポンスデータを保存
+      setRawResponse(JSON.stringify(data, null, 2));
+      // データが配列でない場合は例外を投げる
+      if (!Array.isArray(data)) {
+        throw new Error('Fetched data is not an array');
+      }
+      setItems(data as DataType[]);
+    } catch (error: unknown) {
       console.error('Error fetching items:', error);
-      setLoading(false); // エラーが発生した場合もローディングを終了
+      if (error instanceof Error) {
+        setError(error.message); // エラーメッセージを設定
+      } else {
+        setError('An unknown error occurred'); // 不明なエラーの場合のメッセージ
+      }
+    } finally {
+      setLoading(false); // ローディングを終了
     }
   };
 
@@ -76,14 +88,14 @@ const DataList: React.FC = () => {
       </div>
       {loading ? (
         <CircularProgress />
+      ) : error ? (
+        <Alert severity="error">{error}</Alert>
+      ) : debugMode ? (
+        <DataRawItem item={rawResponse} />
       ) : (
-        debugMode ? (
-          <DataRawItem item={rawResponse} />
-        ) : (
-          items.map((item) => (
-            <DataListItem key={item.id} item={item} />
-          ))
-        )
+        items.map((item) => (
+          <DataListItem key={item.id} item={item} />
+        ))
       )}
     </div>
   );
